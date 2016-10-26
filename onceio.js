@@ -1684,7 +1684,6 @@ var OnceIO = module.exports = function(options) {
 
   //Handler
   self.url      = Handler.url;
-  self.all      = Handler.all;
   self.get      = Handler.get;
   self.handle   = Handler.get;
   self.handler  = Handler.get;
