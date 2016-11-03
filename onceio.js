@@ -25,12 +25,19 @@ var formidable  = require("formidable");
 * Utility
 */
 var _ = {
-  //extend object to target
+  //Merge object not replace object
   extend: function(tar, obj) {
     if (!obj) return tar;
 
     for (var key in obj) {
-      tar[key] = obj[key];
+      var tarVal  = tar[key];
+      var objVal  = obj[key];
+
+      if (typeof tarVal == 'object' && typeof objVal == 'object') {
+        _.extend(tarVal, objVal);
+      } else {
+        tar[key] = obj[key];
+      }
     }
 
     return tar;
@@ -84,7 +91,7 @@ var OnceIO = module.exports = function(options) {
     , listDir: false
     //enable debug information output
     , debug: true
-    //enable cache of template/include file (when enabled templates will not be refreshed before restart)
+    //disable cache of template/include file (when disabled templates will be refreshed before restart)
     , templateCache: false
     //load from cache When size is smaller than fileCacheSize(css/js/images, 0 is disabled)
     , fileCacheSize: 0
@@ -994,7 +1001,6 @@ var OnceIO = module.exports = function(options) {
     return listDir;
   }());
 
-
   /*
   * Template Engine
   */
@@ -1012,18 +1018,46 @@ var OnceIO = module.exports = function(options) {
     /*
     get a file
     */
-    var getFile = function(filePath, cb, home) {
+    var getFile = function(filePath, cb, res) {
+      var tmplCache = res._template[filePath];
+      var tmplPath
+
+      /*
+      It's html or tmpl path
+      */
+      if (typeof tmplCache != 'undefined') {
+        if ( tmplCache.charAt(0) == '<'
+          && tmplCache.charAt(tmplCache.length - 1) == '>') {
+          return tmplCache;
+        } else if (!tmplCache) {
+          return tmplCache;
+        } else {
+          tmplPath = tmplCache;
+        }
+      } else {
+        tmplPath = filePath;
+      }
+
+      var module    = getModule(tmplPath);
+
+      if (module) {
+        tmplPath    = path.join(module.home, module.file);
+      } else {
+        var homeDir = tmplPath.charAt(0) == '/' ? Settings.home : (res.home || Settings.home);
+        tmplPath    = path.join(homeDir, tmplPath);
+      }
+
       //if template cache enabled, get from cache pool directly
-      var cachedTemplate = tmplCachePool[filePath]
+      var cachedTemplate = tmplCachePool[tmplPath];
 
       var updateCache = function(err, tmpl) {
         if (err) {
-          console.error(err, filePath);
+          console.error(err, tmplPath);
           cb && cb("");
-        } else {
-          tmpl = getInclude(tmpl.toString(), cb, home)
-          tmplCachePool[filePath] = tmpl;
-          console.log('Update template cache', filePath);
+        } else if (res) {
+          tmpl = getInclude(tmpl.toString(), cb, res);
+          tmplCachePool[tmplPath] = tmpl;
+          console.log('Update template cache', tmplPath);
         }
       };
 
@@ -1031,28 +1065,31 @@ var OnceIO = module.exports = function(options) {
       templateCache: If enabled get from file at the first time and then get from cache
       */
       if (Settings.templateCache && cachedTemplate) {
+        console.log('Get from cache:', tmplPath);
+
         if (cachedTemplate.indexOf(includeString) > -1) {
           updateCache(null, cachedTemplate);
         } else {
           cb && cb(cachedTemplate);
         }
       } else {
+        console.log('Get from file:', tmplPath);
         // fs.readFile(fullpath, updateCache);
-        fs.readFile(filePath, updateCache)
+        fs.readFile(tmplPath, updateCache);
       }
+
+      return cachedTemplate;
     };
 
     /*
     find and update all the include files and update the cache
     */
-    var getInclude = function(tmpl, cb, home) {
+    var getInclude = function(tmpl, cb, res) {
       tmpl = (tmpl || '').replace(includeRegExp, function(fileStr) {
-        console.log('Include file:', fileStr);
         var includeFile = fileStr.substring(includeBeginLen, fileStr.length - includeAfterLen);
-        var homeDir     = includeFile.charAt(0) == '/' ? Settings.home : (home || Settings.home);
-        var includePath = path.join(homeDir, includeFile);
-        getFile(includePath, null, home);
-        return tmplCachePool[includePath] || fileStr;
+        var tmplCache   = getFile(includeFile, null, res);
+        return tmplCache || fileStr;
+        //return tmplCachePool[includeFile] || fileStr;
       });
 
       cb && cb (tmpl)
@@ -1119,7 +1156,7 @@ var OnceIO = module.exports = function(options) {
           merge model
           */
           var model = Object.create(defaultModel);
-          _.extend(model, res.model);
+          _.extend(model, res._model);
           _.extend(model, _model);
 
 
@@ -1159,16 +1196,9 @@ var OnceIO = module.exports = function(options) {
           };
 
           if (isRawTmpl) {
-            getInclude(tmplUrl, render, res.home);
+            getInclude(tmplUrl, render, res);
           } else {
-            var tmplPath
-            var module = getModule(tmplUrl);
-            if (module) {
-              tmplPath = path.join(module.home, module.file);
-            } else {
-              tmplPath = path.join(res.home || Settings.home, tmplUrl);
-            }
-            getFile(tmplPath, render, res.home);
+            getFile(tmplUrl, render, res);
           }
         }
       , renderRaw: function(rawTmpl, model) {
@@ -1190,15 +1220,17 @@ var OnceIO = module.exports = function(options) {
             return
           }
 
+          if (extname.charAt('0') == '.') {
+            extname = extname.substr(1)
+          }
+
           self.engines[extname] = _engineFunc;
         }
       , getEngine: function(extname) {
           var self = this;
           return self.engines[extname || ''] || self.engines['']
         }
-      , model: function(_model) {
-          _.extend(defaultModel, _model);
-        }
+      , _model  : defaultModel
       , clear: function() {
           for (var tmpl in tmplCachePool) {
             delete tmplCachePool[tmpl];
@@ -1228,10 +1260,10 @@ var OnceIO = module.exports = function(options) {
             }
 
             for (var i = 0; i < files.length; i++) {
-              var fileName  = files[i];
+              var fileName = files[i];
               var extIdx   = fileName.indexOf(extname);
               if (extIdx === (fileName.length - extname.length) && extIdx > 0) {
-                getFile(path.join(home, fileName), null, home);
+                getFile(fileName, null, { home: home, _template: {} });
               }
             }
           })
@@ -1588,6 +1620,24 @@ var OnceIO = module.exports = function(options) {
     res.end(content || '');
   }
 
+  var setModel = function(name, model) {
+    // this equal to res or app
+    var self = this;
+
+    if (arguments.length < 2) {
+      _.extend(self._model, name);
+    } else {
+      var obj   = {};
+      obj[name] = model;
+      _.extend(self._model, obj);
+    }
+  }
+
+  var setTemplate = function(tmpl) {
+    var res = this;
+    _.extend(res._template, tmpl);
+  }
+
   var requestHandler = function(req, res) {
     //Make request accessible in response object
     res.req       = req;
@@ -1607,7 +1657,10 @@ var OnceIO = module.exports = function(options) {
     res.renderRaw = Template.renderRaw;
 
     //default model
-    res.model   = {};
+    res._model    = {};
+    res._template = {};
+    res.model     = setModel;
+    res.template  = setTemplate;
 
     //params in the matched url
     req.params  = {};
@@ -1694,9 +1747,12 @@ var OnceIO = module.exports = function(options) {
   //Template
   self.engine   = Template.setEngine;
   self.engines  = Template.engines;
-  self.model    = Template.model;
+  self._model   = Template._model;
+  self.model    = setModel;
   self.clear    = Template.clear;
-  self.preload  = Template.preload;    //preload templates
+  //preload templates
+  self.preload  = Template.preload;
+  self.pre      = Template.preload;
 
 
   //static file cache pool & tmplate cache ppol

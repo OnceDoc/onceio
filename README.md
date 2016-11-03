@@ -9,5 +9,7 @@ OnceIO是[OnceDoc](http:///oncedoc.com)企业私有内容(网盘)管理系统的
 
 - [用OnceIO(NodeJS)搭建简单的web服务器](http://cn.oncedoc.com/blog/view/iu94ogr2nwkj)
 - [NodeJS中的Middleware是什么?在OnceIO中创建和使用中间件](http://cn.oncedoc.com/blog/view/iukgjmgbbf6h)
+- [OnceIO(Node.JS)的路由(Routing)、路由方法和路由变量](http://cn.oncedoc.com/blog/view/iv0e3boddunu)
+- [OnceIO(Node.JS)的静态文件路由](http://cn.oncedoc.com/blog/view/iv23v91nasx5)
 - [OnceIO(Node.JS)中的模板引擎是什么及MVC设计模式的使用与实现](http://cn.oncedoc.com/blog/view/iup2u927oyqz)
 - [OnceIO(Node.JS)中安装、使用和更换doT、EJS、pug等模板引擎](http://cn.oncedoc.com/blog/view/iurpschtl29e)
