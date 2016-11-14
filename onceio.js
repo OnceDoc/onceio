@@ -111,9 +111,9 @@ var OnceIO = module.exports = function(options) {
     , sessionDir    : ''
 
     //session domain
-    , sessionDomain: ''
-
-    , sessionLength: 36
+    , sessionDomain : ''
+    , sessionKey    : '_wsid'
+    , sessionLength : 36
 
     //tempary upload file stored here
     , uploadDir:  os.tmpDir()
@@ -140,32 +140,24 @@ var OnceIO = module.exports = function(options) {
   /*
   Parse request with session support
   */
-  var SessionParser = function() {
-    var self  = this;
+  var SessionKey  = Settings.sessionKey;
 
-    //session id
-    self.sid  = null;
-    self.val  = null;
-  };
-
-  SessionParser.prototype = {
+  var SessionAdapter = {
     init: function(req, res, cb) {
-      var self   = this
-      var sidKey = "_wsid"
-      var sidVal
-      var sidStr
+      var self    = this;
+      var sidVal;
+      var sidStr;
 
       //Get or Create sid, sid exist in the cookie, read it
-      var sidVal = req.cookies[sidKey];
+      var sidVal = req.cookie[SessionKey];
 
       //Does session expired?
       var getSession = function(session) {
         var isValid = session && session.__lastAccessTime && (+new Date() - session.__lastAccessTime <= Settings.sessionTimeout);
 
         if (isValid) {
-          self.sid = sidVal;
-          self.val = session;
-          self.val.__lastAccessTime = +new Date();
+          req.session                   = session;
+          req.session.__lastAccessTime  = +new Date();
           cb && cb();
         } else {
           SessionStore.del(sidVal);
@@ -174,8 +166,8 @@ var OnceIO = module.exports = function(options) {
       };
 
       var setSession = function() {
-        self.create();
-        res.cookie(sidKey, self.sid, { domain: Settings.sessionDomain, path: '/', httponly: true });
+        self.create(req);
+        res.cookie(SessionKey, req.cookie[SessionKey], { domain: Settings.sessionDomain, path: '/', httponly: true });
         cb && cb();
       };
 
@@ -211,31 +203,24 @@ var OnceIO = module.exports = function(options) {
     }
 
     //Binding new sid to this session
-    , create: function() {
+    , create: function(req) {
       var self = this;
-      self.sid  = self.newID();
-      self.val  = { __lastAccessTime: +new Date() };
+      req.cookie[SessionKey] = self.newID();
+      req.session = { __lastAccessTime: +new Date() };
       return self;
     }
 
-    , update: function() {
-      var self = this;
-      SessionStore.set(self.sid, self.val);
-    }
+    , save: function(req, cb) {
+      var self    = this;
+      var session = req.session;
+      var sid     = req.cookie[SessionKey];
 
-    //Set an key/value pair in session object
-    , set: function(key, val) {
-      var session = this.val;
-      session.__lastAccessTime = +new Date();
-      session[key] = val;
-      return session;
-    }
-
-    //Get value from session file
-    , get: function(key) {
-      var session = this.val;
-      session.__lastAccessTime = +new Date();
-      return key ? session[key] : session;
+      if (sid && session) {
+        session.__lastAccessTime = +new Date();
+        SessionStore.set(sid, session, cb);
+      } else {
+        cb && cb()
+      }
     }
   };
 
@@ -257,8 +242,7 @@ var OnceIO = module.exports = function(options) {
     var parseSession = function() {
       //add sesion support
       if (mapper.session && typeof req.session == "undefined") {
-        req.session = new SessionParser();
-        req.session.init(req, res, handle);
+        SessionAdapter.init(req, res, handle);
       } else {
         handle();
       }
@@ -343,21 +327,25 @@ var OnceIO = module.exports = function(options) {
     parse cookie in request
     */
     var parseCookies = function() {
-      var cookie  = req.headers.cookie
-      var cookies = {}
-
-      if (cookie) {
-        var cookieArr = cookie.split(';');
-
-        for (var i = 0; i < cookieArr.length; i++) {
-          var strCookie = cookieArr[i]
-          var idx       = strCookie.indexOf('=')
-
-          idx > 0 && (cookies[strCookie.substr(0, idx).trim()] = strCookie.substr(idx + 1).trim());
+      if (!req.cookie) {
+        var cookie  = req.headers.cookie
+        var cookies = {}
+  
+        if (cookie) {
+          var cookieArr = cookie.split(';');
+  
+          for (var i = 0; i < cookieArr.length; i++) {
+            var strCookie = cookieArr[i]
+            var idx       = strCookie.indexOf('=')
+  
+            idx > 0 && (cookies[strCookie.substr(0, idx).trim()] = strCookie.substr(idx + 1).trim());
+          }
         }
+  
+        req.cookies = cookies;
+        req.cookie  = cookies;
       }
 
-      req.cookies = cookies;
       parseFile();
     };
 
@@ -419,14 +407,16 @@ var OnceIO = module.exports = function(options) {
       cb && cb(list[sid]);
     };
 
-    var set = function(sid, session) {
+    var set = function(sid, session, cb) {
       !list && init();
       list[sid] = session;
+      cb && cb();
     };
 
-    //remove a sesson from list
-    var del = function(sid) {
+    //remove a session from list
+    var del = function(sid, cb) {
       delete list[sid];
+      cb && cb();
     };
 
     /*
@@ -459,17 +449,19 @@ var OnceIO = module.exports = function(options) {
       return path.join(Settings.sessionDir, sid);
     };
 
-    var del = function(sid) {
+    var del = function(sid, cb) {
       fs.unlink(getPath(sid), function(err) {
-        console.log("Unlink session file err", err);
+        err && console.log("Unlink session file err", err);
+        cb  && cb(err)
       });
     };
 
-    var set = function(sid, session) {
+    var set = function(sid, session, cb) {
       fs.writeFile(getPath(sid), JSON.stringify(session), function(err) {
         if (err) {
           console.error(err);
         }
+        cb && cb(err)
       });
     };
 
@@ -553,7 +545,7 @@ var OnceIO = module.exports = function(options) {
       var reqUrl      = req.url
       var expression  = self.expression
 
-      if (self.method !== undefined && self.method != req.method) {
+      if (typeof self.method != 'undefined' && self.method != req.method) {
         return false
       }
  
@@ -583,9 +575,15 @@ var OnceIO = module.exports = function(options) {
     matchString: function(req, expression) {
       var self    = this
       var reqUrl  = req.url
+      var isLoose = self.mode == 'loose'
+
+      //Match all the request
+      if (expression == '/' && isLoose) {
+        return true
+      }
 
       //Pure string without params
-      if (expression.indexOf('/:') < 0) {
+      else if (expression.indexOf('/:') < 0) {
         var idx     = reqUrl.indexOf(expression)
         var isMatch = false
 
@@ -598,7 +596,7 @@ var OnceIO = module.exports = function(options) {
             app.get('/user', handler)   //not match
             app.url('/user', handler)   //match
           */
-          if (self.mode == 'loose') {
+          if (isLoose) {
             isMatch = lastChar == '' || lastChar == '/' || lastChar == '?';
           } else {
             isMatch = lastChar == '' || lastChar == '?';
@@ -1450,9 +1448,14 @@ var OnceIO = module.exports = function(options) {
   Response may be shutdown when do the filter, in order not to cause exception,
   Rewrite the write/writeHead functionalities
   */
+  var ignoreAfterSent = function() {
+    console.log("Response is already end, response.write ignored!")
+  };
+
   var endHandler = function() {
-    var res = this;
-    var req = res.req;
+    var res   = this;
+    var req   = res.req;
+    var args  = arguments;
 
     //If Content-Type is undefined, using text/html as default
     if (!res.headersSent) {
@@ -1460,15 +1463,16 @@ var OnceIO = module.exports = function(options) {
       res.cookies && res.cookies.length && res.setHeader('Set-Cookie', res.cookies);
     }
 
-    //Execute old end
-    res.endFn.apply(res, arguments);
-    //Rewirte write/writeHead on response object
-    res.write = res.writeHead = res.setHeader = function() {
-      console.log("Response is already end, response.write ignored!")
-    };
-
     //Update session when resonse.end is executed
-    req.session && req.session.update();
+    if (req.session) {
+      SessionAdapter.save(req, function(err) {
+        res.endFn.apply(res, args);
+        res.write = res.writeHead = res.setHeader = ignoreAfterSent;
+      });
+    } else {
+      res.endFn.apply(res, args);
+      res.write = res.writeHead   = res.setHeader = ignoreAfterSent;
+    }
   }
 
   //send file to response
@@ -1664,6 +1668,7 @@ var OnceIO = module.exports = function(options) {
 
     //params in the matched url
     req.params  = {};
+    req.param   = req.params;
     req.cached  = isCached;
 
 
@@ -1727,7 +1732,7 @@ var OnceIO = module.exports = function(options) {
   self.parseUrl = Mapper.prototype.parseUrl;
 
   //Server ID
-  self.newID    = SessionParser.prototype.newID;
+  self.newID    = SessionAdapter.newID;
 
   //Filter
   self.use      = Filter.filter;

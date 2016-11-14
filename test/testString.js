@@ -9,3 +9,17 @@ test("Test string chartAt", function() {
 test("Test string array", function() {
   testString[0] == '/'
 });
+
+
+
+var filename  = 'testsample.png'
+var path      = require('path')
+var extname   = path.extname(filename)
+
+test("Test basename", function() {
+  path.basename(filename, extname)
+});
+
+test("Test substr with length", function() {
+  filename.substr(0, filename.length - extname.length)
+});
