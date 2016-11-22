@@ -23,3 +23,16 @@ test("Test basename", function() {
 test("Test substr with length", function() {
   filename.substr(0, filename.length - extname.length)
 });
+
+
+var filename  = 'testsample.png'
+var path      = require('path')
+var extname   = path.extname(filename)
+
+test("Test basename", function() {
+  path.basename(filename, extname)
+});
+
+test("Test substr with length", function() {
+  filename.substr(0, filename.length - extname.length)
+});
