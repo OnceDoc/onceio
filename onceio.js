@@ -337,8 +337,10 @@ var OnceIO = module.exports = function(options) {
           for (var i = 0; i < cookieArr.length; i++) {
             var strCookie = cookieArr[i]
             var idx       = strCookie.indexOf('=')
+            var key       = strCookie.substr(0, idx).trim()
+            var val       = strCookie.substr(idx + 1).trim()
   
-            idx > 0 && (cookies[strCookie.substr(0, idx).trim()] = strCookie.substr(idx + 1).trim());
+            idx > 0 && (cookies[key] = decodeURIComponent(val));
           }
         }
   
@@ -364,7 +366,7 @@ var OnceIO = module.exports = function(options) {
 
     var self    = this
     var cookies = self.cookies = self.cookies || []
-    var setStr  = name + '=' + (value || '')
+    var setStr  = name + '=' + encodeURIComponent(value || '')
 
     options = options || {};
 
