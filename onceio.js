@@ -95,6 +95,10 @@ var OnceIO = module.exports = function(options) {
     , templateCache: false
     //load from cache When size is smaller than fileCacheSize(css/js/images, 0 is disabled)
     , fileCacheSize: 0
+
+    , gzipMinSize  : 1024
+    , gzipFileType : [ '.css', '.js', '.txt', '.xml' ]
+
     //show errors to user(displayed in response)
     , showError: true
 
@@ -1334,7 +1338,7 @@ var OnceIO = module.exports = function(options) {
 
         var acceptEncoding = req.headers['accept-encoding'] || ''
 
-        if (acceptEncoding.indexOf('gzip') > -1) {
+        if (cachedFile.gzip && acceptEncoding.indexOf('gzip') > -1) {
           res.setHeader('Content-Encoding', 'gzip');
           res.setHeader('Content-Length', cachedFile.gzip.length);
           res.end(cachedFile.gzip, 'binary');
@@ -1379,24 +1383,42 @@ var OnceIO = module.exports = function(options) {
                 return
               }
 
-              zlib.gzip(data, function(err, decoded) {
-                if (err) {
-                  return;
-                }
+              if (stat.size > Settings.gzipMinSize) {
+                var extname = path.extname(phyPath).toLowerCase()
 
-                fileCachePool[phyPath] = {
-                    size  : stat.size
-                  , data  : data
-                  , gzip  : decoded
-                  , ino   : stat.ino
-                  , mtime : stat.mtime
+                if (Settings.gzipFileType.indexOf(extname) > -1) {
+                  zlib.gzip(data, function(err, decoded) {
+                    if (err) {
+                      return;
+                    }
+
+                    fileCachePool[phyPath] = {
+                        size  : stat.size
+                      , data  : data
+                      , gzip  : decoded
+                      , ino   : stat.ino
+                      , mtime : stat.mtime
+                    }
+
+                    console.log('Cached/Gziped', phyPath)
+                  });
+
+                  return
                 }
-              });
+              }
+
+              fileCachePool[phyPath] = {
+                  size  : stat.size
+                , data  : data
+                , ino   : stat.ino
+                , mtime : stat.mtime
+              }
+
+              console.log('Cached', phyPath)
             });
 
           // Else send "not modifed"
           } else {
-
             res.setHeader("Last-Modified", stat.mtime.toUTCString());
             writeFile(res, phyPath);
           }

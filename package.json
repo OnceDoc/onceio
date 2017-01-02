@@ -1,0 +1,13 @@
+{
+  "name": "onceio",
+  "description": "Modular node.js web framework",
+  "version": "0.1.2",
+  "repository": "git://github.com/OnceDoc/onceio.git",
+  "main": "./onceio.js",
+  "dependencies": {
+    "dot":  "1.1.1",
+    "formidable": "1.0.17",
+    "mime": "1.3.4",
+    "qs": "6.3.0"
+  }
+}
