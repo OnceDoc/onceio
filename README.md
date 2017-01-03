@@ -1,6 +1,5 @@
 # onceio
-Cache everything. Lightweight hight performance node.js web framework
-
+Modular web framework based on Node.js. Cache everything.
 
 
 # Install
