@@ -1,3 +1,8 @@
+# 该项目已经停止更新，新版请至 [onceoa.com](http://onceoa.com) 下载，自行从安装包中取中。可免费使用，不限商业用途。
+
+# 最新[开发者文档](http://onceoa.com/wiki/view/onceio) 
+
+
 # onceio
 Modular web framework based on Node.js. Cache everything.
 
